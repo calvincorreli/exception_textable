@@ -1,0 +1,189 @@
+ExceptionTextable Plugin for Rails
+==================================
+
+This plugin sends notifications as SMS's or text messages to your cell phone
+when errors occur in a Rails application.
+
+It is similar to and inspired by Jamis Buck's excellent ExceptionNotifier
+plugin, but differs in the following was:
+
+* Messages are much shorter, making them more suitable for cell phones
+* Messages are throttled so you don't get too many
+* It can be extended with alternative gateways
+
+In Europe, the sender pays to send an SMS, which means you generally need a
+gateway to send SMSes. One such gateway is currently implemented, namely
+[Clickatell](http://clickatell.com/).
+
+In the US, the recipient pays, which means the providers are generally good at
+providing email gateways. The downside is that the system depends on the
+provider.
+
+Usage
+-----
+
+Include the ExceptionTextable in your controller, normally
+ApplicationController:
+
+    class ApplicationController < ActionController::Base
+      include ExceptionTextable
+      ...
+    end
+
+Then go to your production.rb environment file and specify the gateway and
+recipients:
+
+    config.after_initialize do
+      ExceptionTexter.recipients = [[:email, "2123335555@tmomail.net"]]
+    end
+
+The recipients variable is an array of two-element arrays, where the first
+element is the gateway (:email, :clickatell, :test) and the second is the cell
+number in the format needed by the gateway.
+
+You can also do this in your general environment.rb file, or in other
+environments, but getting SMSes for errors in your development or test
+environments seems like a waste of money.
+
+See the section on gateways below.
+
+The standard message is:
+
+    [ERROR] Controller#action (RuntimeError) Exception message - data
+
+See the Customization section below for details on the "data" part and how to
+customize the text.
+
+
+Configuration
+-------------
+
+You can set a prefix for the text we send, which can be used to say which site
+or service had the exception:
+
+    ExceptionTexter.text_prefix = "[ERROR] "
+
+This value is the default value. Make it your own.
+
+
+Customization
+-------------
+
+You can also customize the message by adding an additional string at the end.
+
+    class ApplicationController < ActionController::Base
+      ...
+      protected
+        exception_sms_data :additional_data
+
+        def exception_sms_data
+          "person: #{@person.name}"
+        end
+      ...
+    end
+
+In the SMS, the data will be separated from the standard message by a hyphen
+
+You can also provide a Proc object as the argument to exception\_sms\_data.
+
+If you want to customize the text further, you can override the protected method
+ExceptionTexter#get_text with the following signature:
+
+    def get_text(exception, controller, data = nil)
+      ...
+    end
+
+
+Gateway
+-------
+
+### Email
+
+This relies on the carrier's SMTP gateways. Enter :email for gateway, and enter
+the entire email used to send to that cell phone, eg.
+
+    ExceptionTexter.recipients = [[:email, "2123335555@tmomail.net"]]
+
+See [a list of SMTP gateways for various
+providers](http://www.notepage.net/smtp.htm)
+
+Options for the email gateway:
+
+    ExceptionTexter.email_options = { :from    => "sender@example.test", 
+                                      :subject => "The subject line", 
+                                      :suffix  => "@tomail.net" }
+
+From is the sender. Maybe your SMS gateway needs this set.
+
+Subject is the subject for the email. The text is sent in the body, and subject
+is blank by default.
+
+Suffix is appended to all the recipient numbers, and can be used if all your
+email recipients use the same provider.
+
+None of these are required.
+
+
+### Clickatell
+
+This is useful with European cell phones that do not have an SMTP gateway.
+
+The recipient number should be formatted with country code but without any
+special chars, eg.:
+
+    ExceptionTexter.recipients = [[:clickatell, "4531174202"]]
+
+In addition, you need to set the following clickatell-specific options:
+
+    ExceptionTexter.clickatell_options = { :api_id   => ..., 
+                                           :user     => ..., 
+                                           :password => ... }
+  
+You get the api_id, user, and password when you sign up to Clickatell.
+
+
+### Test
+
+If you just want to see if things are setup correctly, you can use the test
+gateway, which simply logs to the server log.
+
+This gateway has no options.
+
+
+### Write your own gateway
+
+To implement another gateway, just implement a method in ExceptionTexter with
+the name of the gateway with the following signature:
+
+    def yourgateway(recipient, text)
+      ...
+    end
+  
+Then you can use that in your recipients list.
+
+If you do implement another gateway, please send me a patch at lars@pinds.com.
+
+
+Throttling
+----------
+
+Since you pay for the SMS messages one way or the other, we automatically
+throttle them:
+
+* Maximum 5 messages per hour
+* Maximum 2 messages per controller/action per 6 hours
+
+If you want to change or remove the throttling mechanism, simply override the
+ExceptionTexter#suppress? method.
+
+
+Required libraries
+------------------
+
+We require a nmuber of libraries, most notably "net/https".
+
+We use SSL encryption when talking to the Clickatell gateway, because it
+requires your id/username/password to be sent with the request.
+
+
+Copyright (c) 2006 Lars Pind, released under the MIT license
